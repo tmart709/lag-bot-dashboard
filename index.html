@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lag Bot Live</title>
+<style>
+/* Layout: status header, summary tiles, then games, taker bot, maker bot, and the jump log, top to bottom. */
+:root {
+  color-scheme: light;
+  --page: #f6f7f5; --surface: #ffffff; --ink: #101412; --ink2: #4d5450; --muted: #858b87;
+  --grid: #e3e6e3; --border: rgba(16,20,18,0.10);
+  --good: #0a7d3c; --good-bg: rgba(12,163,12,0.12); --bad: #b4302f; --bad-bg: rgba(208,59,59,0.10);
+  --live: #0ca30c; --poly: #2a78d6; --novig: #eb6834;
+  --font: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0c0e0d; --surface: #161a18; --ink: #f2f4f3; --ink2: #b9c0bc; --muted: #7d8581;
+    --grid: #262b28; --border: rgba(255,255,255,0.10);
+    --good: #3ccf6e; --good-bg: rgba(12,163,12,0.18); --bad: #f07a79; --bad-bg: rgba(208,59,59,0.18); --poly: #3987e5; --novig: #d95926;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0c0e0d; --surface: #161a18; --ink: #f2f4f3; --ink2: #b9c0bc; --muted: #7d8581;
+  --grid: #262b28; --border: rgba(255,255,255,0.10);
+  --good: #3ccf6e; --good-bg: rgba(12,163,12,0.18); --bad: #f07a79; --bad-bg: rgba(208,59,59,0.18); --poly: #3987e5; --novig: #d95926;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.5 var(--font); }
+main { max-width: 1240px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 18px; }
+header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; justify-content: space-between; }
+h1 { margin: 0; font-size: 24px; letter-spacing: -0.01em; }
+h2 { margin: 0 0 6px; font-size: 16px; }
+h3 { margin: 12px 0 6px; font-size: 13px; color: var(--ink2); }
+.status { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink2); }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--live); box-shadow: 0 0 0 3px var(--good-bg); }
+.dot.off { background: var(--bad); box-shadow: 0 0 0 3px var(--bad-bg); }
+.note { margin: 0 0 8px; color: var(--ink2); font-size: 13px; max-width: 80ch; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: grid; gap: 2px; }
+.tile .k { font-size: 12px; color: var(--ink2); }
+.tile .v { font-size: 24px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.tile .s { font-size: 12px; color: var(--muted); }
+.split { display: flex; gap: 14px; flex-wrap: wrap; }
+.split span { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; min-width: 0; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; vertical-align: top; }
+th:first-child, td:first-child, .l { text-align: left; }
+th { font-size: 12px; color: var(--ink2); font-weight: 600; }
+.mono { font-family: var(--mono); }
+.pos { color: var(--good); font-weight: 600; }
+.neg { color: var(--bad); }
+.chip { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px; font-weight: 600; margin: 1px 0; }
+.chip.yes { background: var(--good-bg); color: var(--good); }
+.chip.no { background: var(--grid); color: var(--ink2); }
+.chip.live { background: var(--good-bg); color: var(--good); }
+.vtag { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
+.vtag i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+.muted { color: var(--muted); }
+.gap { display: block; padding: 0 4px; border-radius: 4px; font-size: 12px; }
+.gap.ok { background: var(--good-bg); color: var(--good); font-weight: 600; }
+.empty { color: var(--muted); padding: 14px 4px; }
+ul.how { margin: 0; padding-left: 18px; color: var(--ink2); display: grid; gap: 4px; font-size: 13px; max-width: 85ch; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Lag Bot Live</h1>
+    <span class="status"><span class="dot" id="dot"></span><span id="status">Connecting…</span></span>
+  </header>
+  <p class="note"><b>Pretend money only.</b> This copy updates about once a minute from the recorder running on the home PC. This watches Kalshi, Polymarket and Novig and records what two bots <i>would</i> have done. No orders are ever sent.</p>
+
+  <div class="tiles" id="tiles"></div>
+
+  <section class="card">
+    <h2>Games being watched</h2>
+    <p class="note">Bid / ask for the first-listed team on each exchange, live.</p>
+    <div class="scroll"><table id="games"></table></div>
+  </section>
+
+  <section class="card">
+    <h2>Taker bot: grab stale prices after Kalshi jumps</h2>
+    <p class="note" id="takerNote"></p>
+    <div class="scroll"><table id="paper"></table></div>
+  </section>
+
+  <section class="card">
+    <h2>Maker bot: resting orders around Kalshi's price</h2>
+    <p class="note" id="makerNote"></p>
+    <div class="scroll"><table id="makerTable"></table></div>
+    <h3>Latest pretend fills</h3>
+    <div class="scroll"><table id="makerFills"></table></div>
+  </section>
+
+  <section class="card">
+    <h2>Every Kalshi jump and what the taker bot saw</h2>
+    <p class="note">Locked gap = profit per contract if the bot buys on that exchange and hedges on Kalshi at that moment, after both fees. Green means a profit was available.</p>
+    <div class="scroll"><table id="signals"></table></div>
+  </section>
+
+  <section class="card">
+    <h2>How the pretend bots work</h2>
+    <ul class="how" id="how"></ul>
+  </section>
+</main>
+<script>window.LAG_EVERY = 75000; window.LAG_SOURCE = [
+  { url: 'https://api.github.com/repos/tmart709/lag-bot-dashboard/contents/state.json?ref=data', headers: { Accept: 'application/vnd.github.raw+json' } },
+  'https://raw.githubusercontent.com/tmart709/lag-bot-dashboard/data/state.json'
+];</script>
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const c = (v, d = 1) => v == null ? '–' : (v * 100).toFixed(d) + '¢';
+const signedC = (v, d = 2) => v == null ? '–' : (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(d) + '¢';
+const usd = v => (v < 0 ? '−$' : '$') + Math.abs(v).toFixed(2);
+const pct = v => v == null ? '–' : Math.round(v * 100) + '%';
+const time = t => new Date(t).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+const esc = s => String(s ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+const COLOR = { poly: 'var(--poly)', novig: 'var(--novig)' };
+let lastOk = 0;
+
+function render(s) {
+  const N = s.venueNames, V = s.venues;
+  const vt = v => '<span class="vtag"><i style="background:' + COLOR[v] + '"></i>' + N[v] + '</span>';
+  const act = s.games.filter(g => g.active);
+  const jumps = s.games.reduce((a, g) => a + g.signals, 0);
+  // Maker results shown for ±2–4¢ orders only; ±1¢ orders are still recorded but hidden (they lose to Kalshi's fee).
+  const MIN_W = 0.02 - 1e-9;
+  const shownRows = s.maker.rows.filter(r => r.width >= MIN_W);
+  const mSum = v => { const rs = shownRows.filter(r => r.venue === v); return { profit: rs.reduce((a, r) => a + r.profit, 0), fills: rs.reduce((a, r) => a + r.fills, 0), contracts: rs.reduce((a, r) => a + r.contracts, 0) }; };
+  $('tiles').innerHTML =
+    '<div class="tile"><span class="k">Games recording</span><span class="v">' + act.length + '</span><span class="s">' + s.games.length + ' found · ' + s.games.filter(g => g.novig).length + ' also on Novig</span></div>' +
+    '<div class="tile"><span class="k">Kalshi jumps</span><span class="v">' + jumps + '</span><span class="s">moves of ' + Math.round(s.bot.trigger * 100) + '¢ or more</span></div>' +
+    '<div class="tile"><span class="k">Taker bot, paper profit</span><div class="split">' + V.map(v => '<span title="' + N[v] + '">' + vt(v) + '<br>' + usd(s.paper.byVenue[v].profit) + '</span>').join('') + '</div><span class="s">' + V.map(v => s.paper.byVenue[v].count + ' on ' + N[v]).join(' · ') + '</span></div>' +
+    '<div class="tile"><span class="k">Maker bot (±2–4¢ orders), paper profit</span><div class="split">' + V.map(v => '<span>' + vt(v) + '<br>' + usd(mSum(v).profit) + '</span>').join('') + '</div><span class="s">' + V.map(v => mSum(v).fills + ' fills on ' + N[v]).join(' · ') + '</span></div>';
+
+  const ba = (x, d) => x && (x.bid != null || x.ask != null) ? c(x.bid, d) + ' / ' + c(x.ask, d) : '–';
+  $('games').innerHTML = '<thead><tr><th>Game</th><th class="l">Score</th><th>Kalshi</th><th>' + vt('poly') + '</th><th>' + vt('novig') + '</th><th>Jumps</th><th>Taker would-trades</th></tr></thead><tbody>' +
+    (s.games.length ? s.games.map(g => {
+      const score = g.score ? esc((g.score.teams || []).map(t => t.abbr + ' ' + t.score).join(' – ') + ' · ' + (g.score.detail || '')) : (g.active ? '' : 'Kickoff ' + new Date(g.kickoff).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }));
+      return '<tr><td>' + esc(g.title) + (g.active ? ' <span class="chip live">recording</span>' : '') + '</td><td class="l muted">' + score + '</td><td class="mono">' + ba(g.kalshi, 0) + '</td><td class="mono">' + ba(g.poly, 1) + '</td><td class="mono">' +
+        (g.novig ? ba(g.novigTop, 1) : '<span class="muted">not listed</span>') + '</td><td>' + g.signals + '</td><td>' + V.map(v => g.opportunities[v]).join(' / ') + '</td></tr>';
+    }).join('') : '<tr><td colspan="7" class="empty">No games found yet. The recorder looks every 10 minutes and starts recording 30 minutes before kickoff.</td></tr>') + '</tbody>';
+
+  $('takerNote').textContent = 'When Kalshi jumps ' + Math.round(s.bot.minMove * 100) + '¢+, the bot buys the same team on Polymarket or Novig if the price there still locks in a profit after fees, then sells it on Kalshi. Trades at the ' + s.paper.latency + '-second check count as filled, up to ' + s.paper.maxContracts + ' contracts.';
+  $('paper').innerHTML = '<thead><tr><th>Time</th><th class="l">Exchange</th><th class="l">Game</th><th class="l">Bought</th><th>Contracts</th><th>Price paid</th><th>Kalshi hedge</th><th>Per contract</th><th>Profit</th></tr></thead><tbody>' +
+    (s.paper.trades.length ? s.paper.trades.map(t => '<tr><td>' + time(t.t) + '</td><td class="l">' + vt(t.venue) + '</td><td class="l">' + esc(t.game) + '</td><td class="l">' + esc(t.team) + '</td><td>' + t.contracts + '</td><td class="mono">' + c(t.price, 1) + '</td><td class="mono">' + c(t.kalshiPrice, 0) + '</td><td class="pos">' + signedC(t.perContract) + '</td><td class="pos">' + usd(t.profit) + '</td></tr>').join('')
+      : '<tr><td colspan="9" class="empty">No taker paper trades yet.</td></tr>') + '</tbody>';
+
+  const M = s.maker.settings;
+  $('makerNote').textContent = 'Pretend orders to buy and sell the first-listed team sit at Kalshi’s price minus and plus each width (maker orders are free on Polymarket and Novig). An order fills only when a real trade on that exchange prints at a worse price. Orders follow Kalshi with a ' + (M.requoteMs / 1000).toFixed(1) + 's delay after the recorder sees it move, so they can be picked off. Each fill is hedged on Kalshi right away (Kalshi taker fee ' + Math.round(s.maker.kalshiFee * 100) + '%). "Picked off" = filled within ' + (M.pickedOffWindowMs / 1000) + 's of a Kalshi jump. "Kalshi 10s later" is how the price moved after the fill: negative means the fill was a bad one. Showing ±2–4¢ orders only; ±1¢ orders are still recorded in the background but hidden, since they lose to Kalshi’s fee.';
+  $('makerTable').innerHTML = '<thead><tr><th class="l">Exchange</th><th>Order width</th><th>Fills</th><th>Contracts</th><th>Per contract</th><th>Profit</th><th>Picked off</th><th>Kalshi 10s later</th></tr></thead><tbody>' +
+    V.map(v => {
+      const rs = shownRows.filter(r => r.venue === v), t = mSum(v);
+      const cls = x => (x > 0 ? 'pos' : x < 0 ? 'neg' : '');
+      return rs.map(r => '<tr><td class="l">' + vt(r.venue) + '</td><td>±' + Math.round(r.width * 100) + '¢</td><td>' + r.fills + '</td><td>' + r.contracts.toLocaleString() + '</td><td class="' + cls(r.perContract) + '">' + signedC(r.perContract) + '</td><td class="' + cls(r.profit) + '">' + usd(r.profit) + '</td><td>' + pct(r.pickedOff) + '</td><td>' + signedC(r.markout10) + '</td></tr>').join('') +
+        '<tr><td class="l"><b>' + N[v] + ' total</b></td><td>±2–4¢</td><td><b>' + t.fills + '</b></td><td><b>' + t.contracts.toLocaleString() + '</b></td><td class="' + cls(t.profit) + '"><b>' + signedC(t.contracts ? t.profit / t.contracts : null) + '</b></td><td class="' + cls(t.profit) + '"><b>' + usd(t.profit) + '</b></td><td></td><td></td></tr>';
+    }).join('') + '</tbody>';
+  $('makerFills').innerHTML = '<thead><tr><th>Time</th><th class="l">Exchange</th><th class="l">Game</th><th>Width</th><th class="l">Side</th><th>Price</th><th>Kalshi hedge</th><th>Contracts</th><th>Profit</th><th class="l">Note</th></tr></thead><tbody>' +
+    (s.maker.recent.filter(f => f.width >= MIN_W).length ? s.maker.recent.filter(f => f.width >= MIN_W).map(f => '<tr><td>' + time(f.t) + '</td><td class="l">' + vt(f.venue) + '</td><td class="l">' + esc(f.game) + '</td><td>±' + Math.round(f.width * 100) + '¢</td><td class="l">' + (f.side === 'buy' ? 'Bought ' : 'Sold ') + esc(f.team) + '</td><td class="mono">' + c(f.price, 0) + '</td><td class="mono">' + c(f.kalshiHedge, 0) + '</td><td>' + f.contracts + '</td><td class="' + (f.profit >= 0 ? 'pos' : 'neg') + '">' + usd(f.profit) + '</td><td class="l">' + (f.pickedOff ? '<span class="chip no">right after a jump</span>' : '') + '</td></tr>').join('')
+      : '<tr><td colspan="10" class="empty">No pretend fills yet.</td></tr>') + '</tbody>';
+
+  const L = s.bot.latencies;
+  $('signals').innerHTML = '<thead><tr><th>Time</th><th class="l">Game</th><th class="l">Moved toward</th><th>Kalshi move</th>' + L.map(x => '<th>Gap at ' + x + 's</th>').join('') + '<th>Stale price lasted</th><th class="l">Decision</th></tr></thead><tbody>' +
+    (s.signals.length ? s.signals.map(sg => {
+      const cells = L.map(x => '<td>' + V.map(v => {
+        const k = (sg.checks[v] || []).find(q => q.L === x);
+        if (!k || k.missing) return '<span class="gap muted">' + N[v][0] + ' –</span>';
+        return '<span class="gap ' + (k.qualifies ? 'ok' : '') + '">' + N[v][0] + ' ' + signedC(k.locked) + '</span>';
+      }).join('') + '</td>').join('');
+      const stale = '<td>' + V.map(v => '<span class="gap">' + N[v][0] + ' ' + (sg.stale?.[v]?.seen ? (sg.stale[v].lastedMs / 1000).toFixed(1) + 's' : '–') + '</span>').join('') + '</td>';
+      const dec = V.map(v => {
+        if (sg.paper?.[v]) return '<span class="chip yes">' + N[v] + ': paper trade ' + usd(sg.paper[v].profit) + '</span>';
+        const k = (sg.checks[v] || []).find(q => q.L === 2);
+        if (!k || k.missing) return '<span class="chip no">' + N[v] + ': no price</span>';
+        if (sg.move < s.bot.minMove) return '<span class="chip no">' + N[v] + ': move under ' + Math.round(s.bot.minMove * 100) + '¢</span>';
+        return '<span class="chip no">' + N[v] + ': gap below fees</span>';
+      }).join('<br>');
+      return '<tr><td>' + time(sg.t) + '</td><td class="l">' + esc(sg.title) + '</td><td class="l">' + esc(sg.team) + '</td><td>' + c(sg.move, 1) + '</td>' + cells + stale + '<td class="l">' + dec + '</td></tr>';
+    }).join('') : '<tr><td colspan="' + (6 + L.length) + '" class="empty">No Kalshi jumps yet. They usually come right after big plays.</td></tr>') + '</tbody>';
+
+  $('how').innerHTML = [
+    'Watches Kalshi’s order book about once a second, Polymarket’s live order book and trades, and Novig’s order book and trades every 1–2 seconds, for every game listed on Kalshi and Polymarket (Novig when it lists the game too).',
+    '<b>Taker bot:</b> a jump is when Kalshi’s price moves ' + Math.round(s.bot.trigger * 100) + '¢+ from where it was over the previous couple of minutes. At ' + L.join(', ') + ' seconds it checks each exchange’s price for the team Kalshi moved toward against Kalshi’s bid. A trade needs a ' + Math.round(s.bot.minMove * 100) + '¢+ Kalshi move and a profit after fees (Polymarket 3%, Novig 6% in-game, Kalshi 7%, each × price × (1 − price)).',
+    '<b>Maker bot:</b> keeps pretend buy and sell orders at ±1, 2, 3 and 4¢ from Kalshi’s price on Polymarket and Novig, where maker orders are free. It fills only when a real trade there would have hit it first, then hedges on Kalshi. The risk it measures is getting picked off right after big plays.',
+    '“Stale price lasted” is how long a profitable price stayed available on each exchange after a jump: the window a real bot would have to act in.',
+    'Everything is saved to data/live/&lt;date&gt;/ (paper.jsonl, maker.jsonl, signals and order books) for the after-game report.'
+  ].map(t => '<li>' + t + '</li>').join('');
+
+  const ageMin = (Date.now() - s.now) / 60000;
+  if (ageMin > 3) {
+    $('dot').className = 'dot off';
+    $('status').textContent = 'Last update ' + Math.round(ageMin) + ' min ago (' + time(s.now) + '). Is the bot still running on your PC?';
+  } else {
+    $('status').textContent = 'Recording ' + s.sport.toUpperCase() + ' · running ' + Math.round((s.now - s.started) / 60000) + ' min · updated ' + time(s.now);
+    $('dot').className = 'dot';
+  }
+}
+
+// Locally this reads the recorder directly every 2s. The published copy on GitHub Pages sets LAG_SOURCE to
+// the snapshot the publisher uploads about once a minute.
+const SOURCE = window.LAG_SOURCE || ['/api/state'];
+const EVERY = window.LAG_EVERY || 2000;
+async function tick() {
+  for (const src of SOURCE) {
+    try {
+      const r = await fetch(src.url || src, { cache: 'no-store', headers: src.headers || {} });
+      if (!r.ok) continue;
+      render(await r.json()); lastOk = Date.now(); return;
+    } catch (e) {}
+  }
+  if (Date.now() - lastOk > EVERY * 3) { $('dot').className = 'dot off'; $('status').textContent = 'Can’t reach the recorder. Is live.mjs still running?'; }
+}
+tick();
+setInterval(tick, EVERY);
+})();
+</script>
+</body>
+</html>
